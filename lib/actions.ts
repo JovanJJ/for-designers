@@ -124,22 +124,22 @@ export async function getDesignerProjects() {
 
 export async function saveRoomDataAction(payload: {
   roomId: string;
-  length: number;
-  width: number;
-  height: number;
+  length: number | string;
+  width: number | string;
+  height: number | string;
   clientFeedback?: string;
   skippedFeatures?: string[] | Record<string, boolean>;
   images: { category: string; data: string }[];
 }) {
-  const {
-    roomId,
-    length,
-    width,
-    height,
-    clientFeedback,
-    skippedFeatures,
-    images
-  } = payload;
+  const { roomId, clientFeedback, skippedFeatures, images } = payload;
+
+  const parsedLength = parseFloat(String(payload.length));
+  const parsedWidth = parseFloat(String(payload.width));
+  const parsedHeight = parseFloat(String(payload.height));
+
+  const finalLength = isNaN(parsedLength) ? null : parsedLength;
+  const finalWidth = isNaN(parsedWidth) ? null : parsedWidth;
+  const finalHeight = isNaN(parsedHeight) ? null : parsedHeight;
 
   const client = await pool.connect();
 
@@ -158,20 +158,19 @@ export async function saveRoomDataAction(payload: {
 
     const projectId = projectResult.rows[0].project_id;
 
-    // 2. Update Universal Room Data (includes saving skippedFeatures universally)
+    // 2. Strict Numeric Update for Room Data
     await client.query(
       `UPDATE for_designers.rooms 
        SET length = $1, 
            width = $2, 
            height = $3, 
            client_feedback = $4, 
-           skipped_features = $5, 
            status = 'COMPLETED'
-       WHERE id = $6`,
-      [length, width, height, clientFeedback || null, JSON.stringify(skippedFeatures || {}), roomId]
+       WHERE id = $5`,
+      [finalLength, finalWidth, finalHeight, clientFeedback || null, roomId]
     );
 
-    // 3. Dynamic Directory Mapping & Cloudinary Loop
+    // 3. Reliable Cloudinary Upload Pipeline
     for (const image of images) {
       let dbLabel = image.category;
       
@@ -188,19 +187,15 @@ export async function saveRoomDataAction(payload: {
         dbLabel = 'Plumbing & Drainage';
       }
 
-      // Universal dynamic directory path
-      const folder = `space_intake/projects/${projectId}/rooms`;
-
-      const uploadResult = await cloudinary.uploader.upload(image.data, {
-        folder,
-        width: 2000,
-        crop: 'limit',
-        quality: 'auto'
+      const uploadResponse = await cloudinary.uploader.upload(image.data, {
+        folder: `space_intake_production/project_${projectId}/room_${roomId}`,
+        resource_type: 'auto',
+        transformation: [{ width: 2000, crop: 'limit', quality: 'auto' }]
       });
 
       await client.query(
         `INSERT INTO for_designers.room_assets (room_id, image_url, label) VALUES ($1, $2, $3)`,
-        [roomId, uploadResult.secure_url, dbLabel]
+        [roomId, uploadResponse.secure_url, dbLabel]
       );
     }
 
@@ -229,10 +224,15 @@ export async function saveRoomDataAction(payload: {
 
     await client.query("COMMIT");
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     await client.query("ROLLBACK");
-    console.error("saveRoomDataAction error:", error);
-    return { success: false, error: "Failed to process and save room assets" };
+    console.error("saveRoomDataAction error detailed:", {
+      message: error.message,
+      stack: error.stack,
+      roomId,
+      imageCount: images?.length
+    });
+    return { success: false, error: "Failed to process and save room assets: " + error.message };
   } finally {
     client.release();
   }

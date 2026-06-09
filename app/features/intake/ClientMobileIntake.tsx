@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Camera, Upload, ArrowLeft, CheckCircle2, ChevronRight, X, ImagePlus } from 'lucide-react';
+import { Camera, ArrowLeft, CheckCircle2, ChevronRight, X, ImagePlus, Loader2, Sparkles } from 'lucide-react';
+import { saveRoomDataAction } from '@/lib/actions';
+import { RoomScanner } from './components/RoomScanner';
 
 export interface PremiumBranding {
   logo: string;
@@ -105,6 +107,8 @@ export function ClientMobileIntake({
 
   const [roomPhotos, setRoomPhotos] = useState<Record<string, { data: string; category: string }[]>>({});
   const [skippedFields, setSkippedFields] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
 
   const primaryColor = premiumBranding?.color || '#09090b';
   const primaryButtonStyle = { backgroundColor: primaryColor, color: '#ffffff' };
@@ -127,6 +131,17 @@ export function ClientMobileIntake({
   const handleBackToRooms = () => {
     setStep(2);
     setSelectedRoomId(null);
+    setIsScanning(false);
+  };
+
+  const handleScannerComplete = (photos: { category: string; data: string }[]) => {
+    // Map individual captures to our roomPhotos record
+    const updatedPhotos = { ...roomPhotos };
+    photos.forEach(photo => {
+      updatedPhotos[photo.category] = [{ data: photo.data, category: photo.category }];
+    });
+    setRoomPhotos(updatedPhotos);
+    setIsScanning(false);
   };
 
   const handlePhotoUpload = async (reqId: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -155,27 +170,38 @@ export function ClientMobileIntake({
     }));
   };
 
-  const handleSaveRoom = () => {
+  const handleSaveRoom = async () => {
     if (selectedRoomId) {
-      const payloadImages = Object.entries(roomPhotos).flatMap(([category, photos]) =>
-        photos.map(photo => ({ category, data: photo.data }))
-      );
+      setIsSaving(true);
+      try {
+        const payloadImages = Object.entries(roomPhotos).flatMap(([category, photos]) =>
+          photos.map(photo => ({ category, data: photo.data }))
+        );
 
-      const payload = {
-        roomId: selectedRoomId,
-        length: Number(length) || 0,
-        width: Number(width) || 0,
-        height: Number(height) || 0,
-        skippedFeatures: skippedFields,
-        images: payloadImages,
-      };
+        const payload = {
+          roomId: selectedRoomId,
+          length: Number(length) || 0,
+          width: Number(width) || 0,
+          height: Number(height) || 0,
+          skippedFeatures: skippedFields,
+          images: payloadImages,
+        };
 
-      // Server action call to be integrated here when ready
-      // await saveRoomDataAction(payload);
+        const result = await saveRoomDataAction(payload);
 
-      setRooms(prev => prev.map(r => r.id === selectedRoomId ? { ...r, status: 'COMPLETED' } : r));
+        if (result.success) {
+          setRooms(prev => prev.map(r => r.id === selectedRoomId ? { ...r, status: 'COMPLETED' } : r));
+          handleBackToRooms();
+        } else {
+          alert("Failed to save room details: " + (result.error || "Unknown error"));
+        }
+      } catch (error) {
+        console.error("Error saving room details:", error);
+        alert("An unexpected error occurred. Please try again.");
+      } finally {
+        setIsSaving(false);
+      }
     }
-    handleBackToRooms();
   };
 
   return (
@@ -263,61 +289,80 @@ export function ClientMobileIntake({
 
         {step === 3 && selectedRoom && (
           <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4 duration-300 h-full">
-            <button
-              onClick={handleBackToRooms}
-              className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors font-medium text-sm mb-6 w-fit"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Rooms
-            </button>
+            {!isScanning && (
+              <button
+                onClick={handleBackToRooms}
+                className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-colors font-medium text-sm mb-6 w-fit"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Rooms
+              </button>
+            )}
 
-            <h2 className="text-2xl font-serif text-zinc-900 dark:text-zinc-100 tracking-tight mb-8">{selectedRoom.name}</h2>
+            <h2 className="text-2xl font-serif text-zinc-900 dark:text-zinc-100 tracking-tight mb-8">
+              {isScanning ? `Scanning ${selectedRoom.name}` : selectedRoom.name}
+            </h2>
 
-            <div className="flex flex-col gap-8 flex-1">
-
-              <section>
-                <h3 className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">1. Room Dimensions</h3>
-                <div className="grid grid-cols-2 gap-4 mb-4">
+            {isScanning ? (
+              <RoomScanner 
+                primaryColor={primaryColor} 
+                onComplete={handleScannerComplete} 
+                onCancel={() => setIsScanning(false)} 
+              />
+            ) : (
+              <div className="flex flex-col gap-8 flex-1">
+                <section>
+                  <h3 className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">1. Room Dimensions</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Length (m)</label>
+                      <input
+                        type="number"
+                        value={length}
+                        onChange={e => setLength(e.target.value)}
+                        placeholder="e.g., 4.5"
+                        className="w-full border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-sm bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                        style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Width (m)</label>
+                      <input
+                        type="number"
+                        value={width}
+                        onChange={e => setWidth(e.target.value)}
+                        placeholder="e.g., 3.2"
+                        className="w-full border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-sm bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
+                        style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
+                      />
+                    </div>
+                  </div>
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Length (m)</label>
+                    <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Ceiling Height (m)</label>
                     <input
                       type="number"
-                      value={length}
-                      onChange={e => setLength(e.target.value)}
-                      placeholder="e.g., 4.5"
+                      value={height}
+                      onChange={e => setHeight(e.target.value)}
+                      placeholder="e.g., 2.8"
                       className="w-full border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-sm bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
                       style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Width (m)</label>
-                    <input
-                      type="number"
-                      value={width}
-                      onChange={e => setWidth(e.target.value)}
-                      placeholder="e.g., 3.2"
-                      className="w-full border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-sm bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
-                      style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
-                    />
+                </section>
+
+                <section className="flex flex-col flex-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">2. Room Photos</h3>
+                    <button 
+                      onClick={() => setIsScanning(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg text-[10px] font-bold uppercase tracking-wider border border-indigo-100 dark:border-indigo-800 transition-all hover:scale-105 active:scale-95"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      Guided Scan
+                    </button>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">Ceiling Height (m)</label>
-                  <input
-                    type="number"
-                    value={height}
-                    onChange={e => setHeight(e.target.value)}
-                    placeholder="e.g., 2.8"
-                    className="w-full border border-zinc-200 dark:border-zinc-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-sm bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white"
-                    style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
-                  />
-                </div>
-              </section>
 
-              <section className="flex flex-col flex-1">
-                <h3 className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">2. Room Photos</h3>
-
-                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-4">
                   {requirements.map((req) => {
                     const isSkipped = skippedFields[req.id];
                     const photos = roomPhotos[req.id] || [];
@@ -395,16 +440,27 @@ export function ClientMobileIntake({
                 </div>
               </section>
             </div>
+            )}
 
-            <div className="pt-6 mt-auto border-t border-zinc-200/50 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-950 sticky bottom-0 z-10 pb-6">
-              <button
-                onClick={handleSaveRoom}
-                className="w-full py-4 px-6 rounded-xl font-medium text-lg transition-transform active:scale-95 shadow-sm"
-                style={primaryButtonStyle}
-              >
-                Save Room Details
-              </button>
-            </div>
+            {!isScanning && (
+              <div className="pt-6 mt-auto border-t border-zinc-200/50 dark:border-zinc-800/50 bg-zinc-50 dark:bg-zinc-950 sticky bottom-0 z-10 pb-6">
+                <button
+                  onClick={handleSaveRoom}
+                  disabled={isSaving}
+                  className={`w-full py-4 px-6 rounded-xl font-medium text-lg transition-transform active:scale-95 shadow-sm flex items-center justify-center gap-2 ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  style={primaryButtonStyle}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Saving Details...
+                    </>
+                  ) : (
+                    'Save Room Details'
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
