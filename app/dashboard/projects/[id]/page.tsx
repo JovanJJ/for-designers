@@ -1,4 +1,4 @@
-import ProjectDetailView from "../../../features/dashboard/ProjectDetailView";
+import ProjectDetailView from "../../../features/project/ProjectDetailView";
 
 export default async function ProjectPage({ params }: { params: { id: string } }) {
     return (

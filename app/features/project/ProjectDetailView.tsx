@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar } from '../dashboard/components/Sidebar';
 import { ArrowLeft, Download, Image as ImageIcon, Check, X } from 'lucide-react';
 
 export default function ProjectDetailView() {
@@ -8,7 +8,7 @@ export default function ProjectDetailView() {
       <Sidebar />
       <div className="flex flex-col h-full overflow-hidden">
         <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-12">
-          
+
           {/* Header Section */}
           <div className="flex flex-col md:flex-row md:items-end justify-between border-b border-zinc-200 pb-6 mb-8 gap-6">
             <div className="space-y-4">
@@ -52,12 +52,12 @@ export default function ProjectDetailView() {
 
           {/* Main Report Grid */}
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-12">
-            
+
             {/* Left Column (Visual Assets) */}
             <div className="flex flex-col gap-6">
               <h2 className="text-lg font-semibold text-zinc-900">Uploaded Photos (3)</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                
+
                 {/* Photo Card 1 */}
                 <div className="flex flex-col gap-3 group">
                   <div className="aspect-[4/3] bg-zinc-100 border border-zinc-200 rounded-xl flex items-center justify-center overflow-hidden transition-all group-hover:border-zinc-300 group-hover:shadow-sm">
@@ -96,7 +96,7 @@ export default function ProjectDetailView() {
 
             {/* Right Column (Data & Requirements Panel) */}
             <div className="flex flex-col gap-8 p-6 lg:p-8 bg-zinc-50/50 border border-zinc-200 rounded-2xl shadow-sm h-fit">
-              
+
               {/* Block 1 (Dimensions) */}
               <div className="space-y-4">
                 <h2 className="text-base font-semibold text-zinc-900">Room Dimensions</h2>
