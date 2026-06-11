@@ -1,46 +1,75 @@
-import { getIntakeDataByToken } from '@/lib/actions';
-import { ClientMobileIntake } from '@/app/features/intake/ClientMobileIntake';
-import { Link2Off } from 'lucide-react';
+import React from 'react';
+import { notFound } from 'next/navigation';
+import { IntakeWizard } from '@/app/features/space-intake/components/IntakeWizard';
+
+// Mock database fetch
+async function getProjectByToken(token: string) {
+  // Simulate API delay
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  if (token === 'error') return null;
+
+  return {
+    id: 'proj_123',
+    name: 'Luksuzan Apartman na Vračaru',
+    designer: {
+      name: 'Studio Oaza',
+      logo: '/logo.png',
+      brandColor: '#18181b', // zinc-900
+    },
+    rooms: [
+      { id: 'room_1', name: 'Dnevna Soba' },
+      { id: 'room_2', name: 'Spavaća Soba' },
+    ]
+  };
+}
 
 export default async function IntakePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const data = await getIntakeDataByToken(token);
+  const project = await getProjectByToken(token);
 
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-6 font-sans">
-        <div className="w-16 h-16 bg-zinc-100 border border-zinc-200 rounded-full flex items-center justify-center mb-6 shadow-sm">
-          <Link2Off className="w-8 h-8 text-zinc-400" />
-        </div>
-        <h1 className="text-2xl font-serif text-zinc-900 tracking-tight mb-3">Invalid Link</h1>
-        <p className="text-zinc-500 text-center max-w-sm leading-relaxed text-sm">
-          This intake link has expired or is incorrect. Please contact your designer for a new link.
-        </p>
-      </div>
-    );
+  if (!project) {
+    notFound();
   }
 
-  const { project, rooms } = data;
-
-  const premiumBranding = project.isPremium && (project.logoUrl || project.brandColor) ? {
-    logo: project.logoUrl || '',
-    color: project.brandColor || '#09090b',
-  } : null;
-
-  const initialRooms = rooms.map((room) => ({
-    id: room.id,
-    name: room.roomType ? room.roomType.replace(/_/g, ' ') : 'Unknown Room',
-    roomType: room.roomType,
-    status: room.status as 'PENDING' | 'COMPLETED',
-  }));
-
   return (
-    <ClientMobileIntake
-      studioName={project.studioName}
-      projectTitle={project.name}
-      designerNote={project.clientNotes}
-      premiumBranding={premiumBranding}
-      initialRooms={initialRooms}
-    />
+    <div className="min-h-screen bg-[#FAFAFA]">
+      {/* Designer Branding Bar */}
+      <nav className="bg-white border-b border-zinc-100 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-xs">O</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
+                {project.designer.name}
+              </span>
+              <span className="text-[10px] text-zinc-400 font-medium">
+                Client Portal
+              </span>
+            </div>
+          </div>
+          
+          <div className="hidden md:block">
+            <p className="text-sm font-medium text-zinc-600">
+              Projekat: <span className="text-zinc-900">{project.name}</span>
+            </p>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Container */}
+      <div className="max-w-5xl mx-auto">
+        <IntakeWizard />
+      </div>
+
+      {/* Footer Branding */}
+      <footer className="py-12 text-center">
+        <p className="text-[10px] text-zinc-400 uppercase tracking-[0.3em] font-semibold">
+          Powered by OH-YEAH Designer Tools
+        </p>
+      </footer>
+    </div>
   );
 }

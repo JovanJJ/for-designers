@@ -1,9 +1,9 @@
-import { IntakeView } from './features/intake/IntakeView';
+import { HomeView } from "./features/home/HomeView";
 
 export default function Home() {
   return (
     <main>
-      <IntakeView />
+      <HomeView />
     </main>
   );
 }

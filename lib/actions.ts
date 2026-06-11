@@ -58,7 +58,7 @@ export async function createProjectAction({
     // Insert rooms
     for (const room of selectedRooms) {
       await client.query(
-        `INSERT INTO for_designers.rooms (project_id, room_type, status) VALUES ($1, $2, 'PENDING')`,
+        `INSERT INTO for_designers.rooms (project_id, room_name, status) VALUES ($1, $2, 'PENDING')`,
         [projectId, room]
       );
     }
@@ -102,13 +102,13 @@ export async function getDesignerProjects() {
         p.created_at,
         p.share_token,
         COALESCE(
-          json_agg(r.room_type) FILTER (WHERE r.room_type IS NOT NULL),
+          json_agg(r.room_name) FILTER (WHERE r.room_name IS NOT NULL),
           '[]'
         ) as rooms
       FROM for_designers.projects p
       LEFT JOIN for_designers.rooms r ON p.id = r.project_id
       WHERE p.designer_id = $1
-      GROUP BY p.id
+      GROUP BY p.id, p.name, p.status, p.client_email, p.client_notes, p.created_at, p.share_token
       ORDER BY p.created_at DESC
     `;
 
@@ -130,8 +130,24 @@ export async function saveRoomDataAction(payload: {
   clientFeedback?: string;
   skippedFeatures?: string[] | Record<string, boolean>;
   images: { category: string; data: string }[];
+  detectedElements?: {
+    outlets: {
+      horizontalDistance: string;
+      verticalHeight: string;
+      type: string;
+    }[];
+    plumbing?: {
+      horizontalDistance: string;
+      verticalHeight: string;
+      type: string;
+    }[];
+    radiators: {
+      width: string;
+      height: string;
+    }[];
+  };
 }) {
-  const { roomId, clientFeedback, skippedFeatures, images } = payload;
+  const { roomId, clientFeedback, detectedElements, images } = payload;
 
   const parsedLength = parseFloat(String(payload.length));
   const parsedWidth = parseFloat(String(payload.width));
@@ -140,6 +156,9 @@ export async function saveRoomDataAction(payload: {
   const finalLength = isNaN(parsedLength) ? null : parsedLength;
   const finalWidth = isNaN(parsedWidth) ? null : parsedWidth;
   const finalHeight = isNaN(parsedHeight) ? null : parsedHeight;
+
+  // Serialize detected elements for JSONB storage
+  const serializedElements = detectedElements ? JSON.stringify(detectedElements) : null;
 
   const client = await pool.connect();
 
@@ -158,16 +177,17 @@ export async function saveRoomDataAction(payload: {
 
     const projectId = projectResult.rows[0].project_id;
 
-    // 2. Strict Numeric Update for Room Data
+    // 2. Strict Update for Room Data including JSONB detected_elements
     await client.query(
       `UPDATE for_designers.rooms 
        SET length = $1, 
            width = $2, 
            height = $3, 
            client_feedback = $4, 
+           detected_elements = $5::jsonb,
            status = 'COMPLETED'
-       WHERE id = $5`,
-      [finalLength, finalWidth, finalHeight, clientFeedback || null, roomId]
+       WHERE id = $6`,
+      [finalLength, finalWidth, finalHeight, clientFeedback || null, serializedElements, roomId]
     );
 
     // 3. Reliable Cloudinary Upload Pipeline
@@ -266,7 +286,7 @@ export async function getIntakeDataByToken(token: string) {
     const roomsQuery = `
       SELECT 
         id, 
-        room_type, 
+        room_name, 
         status
       FROM for_designers.rooms
       WHERE project_id = $1
@@ -286,7 +306,7 @@ export async function getIntakeDataByToken(token: string) {
       },
       rooms: roomsResult.rows.map(row => ({
         id: row.id,
-        roomType: row.room_type,
+        roomType: row.room_name,
         status: row.status
       }))
     };
